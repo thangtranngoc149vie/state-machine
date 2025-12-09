@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq;
 
 namespace Fisa.Crm.Application.WorkItems;
 
@@ -84,4 +85,19 @@ internal static class WorkItemStateMachineRules
 
     internal static bool ShouldSetClosedAt(string status)
         => status is WorkItemStatuses.Closed or WorkItemStatuses.Canceled or WorkItemStatuses.Rejected or WorkItemStatuses.Archived;
+
+    internal static IReadOnlyCollection<WorkItemAction> GetAllowedActionsFromStatus(string status)
+    {
+        var allowedActions = AllowedTransitions
+            .Where(kvp => kvp.Value.Contains(status))
+            .Select(kvp => kvp.Key)
+            .ToArray();
+
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return allowedActions.Append(WorkItemAction.Create).ToArray();
+        }
+
+        return allowedActions;
+    }
 }
