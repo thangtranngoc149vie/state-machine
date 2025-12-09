@@ -1,5 +1,8 @@
 # Changelog
 
+## 2025-12-11
+- Bổ sung hướng dẫn từng bước để chạy `WorkItemStateMachine` trong README, bao gồm ví dụ mở transaction và khởi tạo `IClock`.
+
 ## 2025-12-10
 - Thêm `NpgsqlConnectionFactory` để cấu hình chuỗi kết nối PostgreSQL qua biến môi trường `FISA_CRM_DB_CONNECTION_STRING` hoặc
   tham số truyền vào.

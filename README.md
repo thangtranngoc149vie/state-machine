@@ -67,6 +67,43 @@ using var connection = NpgsqlConnectionFactory.FromEnvironment().Create();
 
 Nếu không dùng biến môi trường, truyền thẳng chuỗi kết nối khi khởi tạo `NpgsqlConnectionFactory` để tái sử dụng trong DI container hoặc test tích hợp.
 
+## Cách chạy máy trạng thái
+
+1. Đảm bảo cơ sở dữ liệu đã có schema trong `schema_dump_v7i.sql` và work item cần thao tác đã tồn tại trong bảng `public.work_items`.
+2. Cấu hình chuỗi kết nối như phần trên và mở giao dịch PostgreSQL.
+3. Khởi tạo máy trạng thái với một `IClock` (có thể tự khai báo `SystemClock` đơn giản) và truyền vào kết nối + transaction khi gọi `ApplyActionAsync`:
+
+```csharp
+using var connection = NpgsqlConnectionFactory.FromEnvironment().Create();
+await connection.OpenAsync();
+await using var transaction = await connection.BeginTransactionAsync();
+
+var clock = new SystemClock();
+var stateMachine = new WorkItemStateMachine(clock);
+
+var result = await stateMachine.ApplyActionAsync(
+    workItemId: Guid.Parse("{work-item-guid}"),
+    action: WorkItemAction.Submit,
+    context: new WorkItemActionContext
+    {
+        CurrentUserId = Guid.Parse("{user-guid}"),
+        Note = "Submit từ CRM UI",
+        NewAssigneeId = Guid.Parse("{assignee-guid}")
+    },
+    connection,
+    transaction);
+
+await transaction.CommitAsync();
+
+// ví dụ clock hệ thống
+public sealed class SystemClock : IClock
+{
+    public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;
+}
+```
+
+`WorkItemStateMachine` không tự mở hoặc commit transaction nên caller phải kiểm soát phạm vi giao dịch để có thể gộp nhiều thao tác (ví dụ cập nhật log, gửi event) trước khi commit.
+
 ## Build và kiểm thử
 
 Sau khi có .NET SDK, chạy khôi phục và kiểm thử từ thư mục gốc repository:
