@@ -1,20 +1,20 @@
-# FISA CRM Work Item State Machine
+# Máy trạng thái Work Item của FISA CRM
 
-This repository implements the CRM work-item state machine described in `fisa_crm_work_item_state_machine_and_workflow_integration_v_1.md` and the status design in `fisa_crm_work_item_status_design_v_1.md`. The code targets .NET 8 and is organized so that application-layer services own the workflow-driven transitions while keeping database writes consistent with `schema_dump_v7i.sql`.
+Kho lưu trữ này hiện thực máy trạng thái work item mô tả trong `fisa_crm_work_item_state_machine_and_workflow_integration_v_1.md` và thiết kế trạng thái trong `fisa_crm_work_item_status_design_v_1.md`. Mã nguồn nhắm tới .NET 8 và được tổ chức để dịch vụ tầng ứng dụng kiểm soát các chuyển đổi theo workflow trong khi vẫn ghi dữ liệu khớp với `schema_dump_v7i.sql`.
 
-## Architecture
+## Kiến trúc
 
-- **Application layer** (`src/Fisa.Crm.Application`)
-  - `WorkItems/IWorkItemStateMachine` exposes a single entry point for mutating work item status inside an existing database transaction.
-  - `WorkItemStateMachine` implements the rules via `WorkItemStateMachineRules`, persisting changes to `public.work_items` and `public.work_item_state_history` using Dapper.
-  - `WorkItemAction`, `WorkItemStatuses`, and supporting DTOs (`WorkItemActionContext`, `WorkItemStateChangeResult`) mirror the action and status vocabulary from the functional documents.
-  - `IClock` abstracts time to keep the service testable and to stamp `updated_at` / `closed_at` consistently.
-- **Tests** (`src/Fisa.Crm.Tests`)
-  - Unit coverage for the state-machine rules ensures the allowed transitions stay aligned with the specification and catch regressions without hitting the database.
+- **Tầng ứng dụng** (`src/Fisa.Crm.Application`)
+  - `WorkItems/IWorkItemStateMachine` cung cấp điểm vào duy nhất để thay đổi trạng thái work item trong cùng giao dịch cơ sở dữ liệu.
+  - `WorkItemStateMachine` thi hành luật bằng `WorkItemStateMachineRules`, lưu thay đổi vào `public.work_items` và `public.work_item_state_history` thông qua Dapper.
+  - `WorkItemAction`, `WorkItemStatuses` và các DTO hỗ trợ (`WorkItemActionContext`, `WorkItemStateChangeResult`) phản ánh từ vựng hành động và trạng thái từ tài liệu nghiệp vụ.
+  - `IClock` trừu tượng hóa thời gian để dễ kiểm thử và đóng dấu `updated_at` / `closed_at` nhất quán.
+- **Kiểm thử** (`src/Fisa.Crm.Tests`)
+  - Unit test cho luật máy trạng thái đảm bảo các chuyển đổi được phép luôn bám theo đặc tả và phát hiện hồi quy mà không cần truy cập cơ sở dữ liệu.
 
-The state machine enforces the transition matrix from the specification:
+Máy trạng thái thực thi ma trận chuyển đổi từ đặc tả:
 
-| Action | From statuses | To status |
+| Hành động | Trạng thái hiện tại | Trạng thái đích |
 | --- | --- | --- |
 | Create | — | `draft` |
 | Submit | `draft` | `open` |
@@ -32,13 +32,13 @@ The state machine enforces the transition matrix from the specification:
 | AutoCloseFromWorkflow | `in_progress`, `waiting_*`, `resolved` | `closed` |
 | Archive | `closed`, `canceled`, `rejected` | `archived` |
 
-Actions that terminate a work item (`close`, `cancel`, `reject`, `archive`) also stamp `closed_at` following the nullable column in `schema_dump_v7i.sql`. Each status change writes an audit row into `public.work_item_state_history` with the acting user and note supplied by the `WorkItemActionContext`.
+Các hành động kết thúc work item (`close`, `cancel`, `reject`, `archive`) cũng đóng dấu `closed_at` theo cột cho phép null trong `schema_dump_v7i.sql`. Mỗi lần đổi trạng thái sẽ ghi một dòng audit vào `public.work_item_state_history` với người thực hiện và ghi chú lấy từ `WorkItemActionContext`.
 
-Workflow integration flags follow the document’s guidance: the state machine sets `ShouldNotifyWorkflow` for `Close`, `Cancel`, `Reopen`, and `AutoCloseFromWorkflow` so callers can sync with Workflow Runtime v1 after the database transaction succeeds.
+Cờ tích hợp workflow làm theo hướng dẫn: máy trạng thái đặt `ShouldNotifyWorkflow` cho các hành động `Close`, `Cancel`, `Reopen` và `AutoCloseFromWorkflow` để caller có thể đồng bộ với Workflow Runtime v1 sau khi giao dịch cơ sở dữ liệu thành công.
 
-## Installing .NET SDK
+## Cài đặt .NET SDK
 
-The project targets .NET 8. Use the dotnet-install script to fetch the SDK in environments without a preinstalled toolchain:
+Dự án nhắm tới .NET 8. Bạn có thể cài SDK bằng dotnet-install script khi môi trường chưa có sẵn toolchain:
 
 ```bash
 curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh
@@ -47,11 +47,11 @@ chmod +x dotnet-install.sh
 export PATH="$HOME/.dotnet:$PATH"
 ```
 
-If your network is behind an HTTPS proxy, ensure `HTTPS_PROXY`/`HTTP_PROXY` is set appropriately before running the script.
+Nếu mạng đi qua HTTPS proxy, hãy đặt biến `HTTPS_PROXY`/`HTTP_PROXY` trước khi chạy script.
 
-## Building and testing
+## Build và kiểm thử
 
-Run restores and tests from the repository root once the .NET SDK is available:
+Sau khi có .NET SDK, chạy khôi phục và kiểm thử từ thư mục gốc repository:
 
 ```bash
 cd src
@@ -60,9 +60,9 @@ cd ..
 dotnet test src/Fisa.Crm.Tests
 ```
 
-`WorkItemStateMachine` is database-agnostic for unit tests; it accepts an `IDbConnection` and `IDbTransaction` so integration tests can exercise the SQL paths against the schema in `schema_dump_v7i.sql`.
+`WorkItemStateMachine` không phụ thuộc cơ sở dữ liệu trong unit test; nó nhận `IDbConnection` và `IDbTransaction` để test tích hợp có thể kiểm tra đường đi SQL với schema trong `schema_dump_v7i.sql`.
 
-## Project layout
+## Cấu trúc dự án
 
 ```
 src/
@@ -78,8 +78,8 @@ src/
     WorkItemStateMachineRulesTests.cs
 ```
 
-## Notes on database alignment
+## Ghi chú khớp cơ sở dữ liệu
 
-- `WorkItemStateMachine` updates `public.work_items.status`, `updated_at`, `updated_by`, `assignee_id`, and `closed_at` exactly as defined in `schema_dump_v7i.sql`.
-- State history writes go to `public.work_item_state_history` with a generated UUID (`uuid_generate_v4()`), matching the table definition in the schema dump.
-- All status literals use the snake_case values mandated by the status design document.
+- `WorkItemStateMachine` cập nhật `public.work_items.status`, `updated_at`, `updated_by`, `assignee_id` và `closed_at` đúng như định nghĩa trong `schema_dump_v7i.sql`.
+- Lịch sử trạng thái được ghi vào `public.work_item_state_history` với UUID sinh bởi `uuid_generate_v4()`, khớp định nghĩa bảng trong file dump.
+- Mọi literal trạng thái dùng giá trị snake_case theo tài liệu thiết kế trạng thái.
