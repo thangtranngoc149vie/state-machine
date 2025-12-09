@@ -9,6 +9,7 @@ Kho lưu trữ này hiện thực máy trạng thái work item mô tả trong `f
   - `WorkItemStateMachine` thi hành luật bằng `WorkItemStateMachineRules`, lưu thay đổi vào `public.work_items` và `public.work_item_state_history` thông qua Dapper.
   - `WorkItemAction`, `WorkItemStatuses` và các DTO hỗ trợ (`WorkItemActionContext`, `WorkItemStateChangeResult`) phản ánh từ vựng hành động và trạng thái từ tài liệu nghiệp vụ.
   - `IClock` trừu tượng hóa thời gian để dễ kiểm thử và đóng dấu `updated_at` / `closed_at` nhất quán.
+  - `Database/NpgsqlConnectionFactory` cung cấp điểm cấu hình chuỗi kết nối PostgreSQL (đọc từ biến môi trường hoặc truyền thẳng) để caller dùng chung khi mở `IDbConnection` cho máy trạng thái.
 - **Kiểm thử** (`src/Fisa.Crm.Tests`)
   - Unit test cho luật máy trạng thái đảm bảo các chuyển đổi được phép luôn bám theo đặc tả và phát hiện hồi quy mà không cần truy cập cơ sở dữ liệu.
 
@@ -49,6 +50,23 @@ export PATH="$HOME/.dotnet:$PATH"
 
 Nếu mạng đi qua HTTPS proxy, hãy đặt biến `HTTPS_PROXY`/`HTTP_PROXY` trước khi chạy script.
 
+## Cấu hình chuỗi kết nối cơ sở dữ liệu
+
+Máy trạng thái kỳ vọng một kết nối PostgreSQL khớp schema trong `schema_dump_v7i.sql`. Đặt biến môi trường `FISA_CRM_DB_CONNECTION_STRING` (hoặc tự đặt tên biến rồi truyền vào `NpgsqlConnectionFactory.FromEnvironment(<ten_bien>)`) trước khi khởi tạo kết nối:
+
+```bash
+export FISA_CRM_DB_CONNECTION_STRING="Host=localhost;Port=5432;Database=fisa_crm;Username=postgres;Password=changeme"
+```
+
+Sau đó, caller có thể tạo kết nối dùng chung cho toàn bộ giao dịch:
+
+```csharp
+using var connection = NpgsqlConnectionFactory.FromEnvironment().Create();
+// mở giao dịch và chuyển vào WorkItemStateMachine.ApplyActionAsync(...)
+```
+
+Nếu không dùng biến môi trường, truyền thẳng chuỗi kết nối khi khởi tạo `NpgsqlConnectionFactory` để tái sử dụng trong DI container hoặc test tích hợp.
+
 ## Build và kiểm thử
 
 Sau khi có .NET SDK, chạy khôi phục và kiểm thử từ thư mục gốc repository:
@@ -67,6 +85,8 @@ dotnet test src/Fisa.Crm.Tests
 ```
 src/
   Fisa.Crm.Application/
+    Database/
+      NpgsqlConnectionFactory.cs
     WorkItems/
       WorkItemAction.cs
       WorkItemStatuses.cs
@@ -75,6 +95,7 @@ src/
       WorkItemRecord.cs
       IWorkItemStateMachine.cs
   Fisa.Crm.Tests/
+    NpgsqlConnectionFactoryTests.cs
     WorkItemStateMachineRulesTests.cs
 ```
 
