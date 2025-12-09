@@ -39,4 +39,17 @@ public class WorkItemStateMachineRulesTests
     {
         Assert.Equal(expected, WorkItemStateMachineRules.ShouldNotifyWorkflow(action));
     }
+
+    [Fact]
+    public void GetAllowedActionsFromStatus_ReturnsNextSteps()
+    {
+        var fromWaitingCustomer = WorkItemStateMachineRules.GetAllowedActionsFromStatus(WorkItemStatuses.WaitingCustomer);
+        Assert.Contains(WorkItemAction.Resolve, fromWaitingCustomer);
+        Assert.Contains(WorkItemAction.BackToInProgress, fromWaitingCustomer);
+        Assert.Contains(WorkItemAction.Cancel, fromWaitingCustomer);
+
+        var fromClosed = WorkItemStateMachineRules.GetAllowedActionsFromStatus(WorkItemStatuses.Closed);
+        Assert.Contains(WorkItemAction.Archive, fromClosed);
+        Assert.Contains(WorkItemAction.Reopen, fromClosed);
+    }
 }
