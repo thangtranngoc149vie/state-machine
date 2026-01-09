@@ -24,6 +24,14 @@ SELECT
         var result = await connection.QuerySingleOrDefaultAsync<Guid>(sql, new { WorkItemId = workItemId });
         return result;
     }
+    public async Task<int> SetStepStatusAsync(Guid workflowInstanceStepId, string status, IDbConnection connection)
+    {
+        var sql = @"
+UPDATE public.workflow_instance_steps set status = @Status, updated_at = now()
+where id = @WorkflowInstanceStepId";
+        var result = await connection.ExecuteAsync(sql, new { WorkflowInstanceStepId = workflowInstanceStepId, Status = status });
+        return result;
+    }
     public async Task<WorkItemStateChangeResult> ApplyActionAsync(
         Guid workItemId,
         WorkItemAction action,

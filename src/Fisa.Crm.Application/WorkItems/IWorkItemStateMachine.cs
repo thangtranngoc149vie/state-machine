@@ -19,6 +19,7 @@ public interface IWorkItemStateMachine
         IDbTransaction transaction);
     Task<Guid> GetStepAsync(Guid workItemId, IDbConnection connection);
     Task<Guid?> GetNextTransitionStepAsync(Guid workItemId, IDbConnection connection);
+    Task<int> SetStepStatusAsync(Guid workflowInstanceStepId, string status, IDbConnection connection);
 }
 
 public sealed class WorkItemActionContext

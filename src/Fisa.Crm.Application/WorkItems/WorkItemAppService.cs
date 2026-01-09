@@ -12,6 +12,7 @@ public interface IWorkItemAppService
     Task<WorkItemActionResponse> ApplyStatusAsync(Guid workItemId, string status, WorkItemActionRequest request, Guid currentUserId, CancellationToken cancellationToken);
     Task<Guid?> GetNextTransitionStepAsync(Guid workItemId, CancellationToken cancellationToken);
     Task<Guid?> GetStepAsync(Guid workItemId, CancellationToken cancellationToken);
+    Task<int?> SetStepStatusAsync(Guid workflowInstanceStepId, string status, CancellationToken cancellationToken);
 }
 
 public sealed class WorkItemAppService : IWorkItemAppService
@@ -160,6 +161,13 @@ public sealed class WorkItemAppService : IWorkItemAppService
         await connection.OpenAsync(cancellationToken);
         return await _stateMachine.GetStepAsync(workItemId, connection);
     }
+
+    public async Task<int?> SetStepStatusAsync(Guid workflowInstanceStepId, string status, CancellationToken cancellationToken)
+    {
+        await using var connection = (System.Data.Common.DbConnection)_connectionFactory.Create();
+        await connection.OpenAsync(cancellationToken);
+        return await _stateMachine.SetStepStatusAsync(workflowInstanceStepId, status, connection);
+    }
 }
 
 public sealed class WorkItemActionRequest
@@ -167,6 +175,7 @@ public sealed class WorkItemActionRequest
     public string Action { get; init; } = default!;
     public string? Note { get; init; }
     public Guid? NewAssigneeId { get; init; }
+    public Guid? WorkflowInstanceStepId { get; init; }
     public string? Source { get; init; }
     public string? Status { get; set; }
 }

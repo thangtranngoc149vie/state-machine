@@ -40,38 +40,15 @@ public sealed class WorkItemsController : ControllerBase
         try
         {
             WorkItemActionResponse response = null;
-            if (request.Action.ToLower() != "resolve" && request.Action.ToLower() != "close")
+            var currentStepId = await _workItemAppService.GetStepAsync(id, cancellationToken);
+            if (request.WorkflowInstanceStepId == null || request.WorkflowInstanceStepId == currentStepId)
             {
-                _logger.LogInformation(prefix + "not resolve, not close");
-                response = await _workItemAppService.ApplyActionAsync(id, request, currentUserId, cancellationToken);
-                _logger.LogInformation(prefix + "response=" + JsonConvert.SerializeObject(response));
-                ThreadPool.QueueUserWorkItem(async _ =>
+                _logger.LogInformation(prefix + " with current step ");
+                if (request.Action.ToLower() != "resolve" && request.Action.ToLower() != "close")
                 {
-                    try
-                    {
-                        var notiInput = new WorkItemActionToOutbox()
-                        {
-                            note = request.Note,
-                            old_status = response.OldStatus,
-                            new_status = response.NewStatus,
-                            id = id
-                        };
-                        var r = await SendNotification(notiInput);
-                    }
-                    catch (Exception e)
-                    {
-                        _logger.LogError(prefix + "Noti Err: " + e.Message + e.StackTrace);
-                    }
-                });
-            }
-            else
-            {
-                _logger.LogInformation(prefix + "Call completion");
-                var currentStepId = await _workItemAppService.GetStepAsync(id, cancellationToken);
-                var nextStepId = await _workItemAppService.GetNextTransitionStepAsync(id, cancellationToken);
-                if (nextStepId == null)
-                {
+                    _logger.LogInformation(prefix + "not resolve, not close");
                     response = await _workItemAppService.ApplyActionAsync(id, request, currentUserId, cancellationToken);
+                    _logger.LogInformation(prefix + "response=" + JsonConvert.SerializeObject(response));
                     ThreadPool.QueueUserWorkItem(async _ =>
                     {
                         try
@@ -93,48 +70,80 @@ public sealed class WorkItemsController : ControllerBase
                 }
                 else
                 {
-                    response = await _workItemAppService.ApplyStatusAsync(id, "in_progress", request, currentUserId, cancellationToken);
-                    ThreadPool.QueueUserWorkItem(async _ =>
+                    _logger.LogInformation(prefix + "Call completion");
+                    var nextStepId = await _workItemAppService.GetNextTransitionStepAsync(id, cancellationToken);
+                    if (nextStepId == null)
                     {
-                        try
+                        response = await _workItemAppService.ApplyActionAsync(id, request, currentUserId, cancellationToken);
+                        ThreadPool.QueueUserWorkItem(async _ =>
                         {
-                            var notiInput = new WorkItemActionToOutbox()
+                            try
                             {
-                                note = request.Note,
-                                old_status = response.OldStatus,
-                                new_status = response.NewStatus,
-                                id = id
-                            };
-                            var r = await SendNotification(notiInput);
-                            
-                        }
-                        catch (Exception e)
+                                var notiInput = new WorkItemActionToOutbox()
+                                {
+                                    note = request.Note,
+                                    old_status = response.OldStatus,
+                                    new_status = response.NewStatus,
+                                    id = id
+                                };
+                                var r = await SendNotification(notiInput);
+                            }
+                            catch (Exception e)
+                            {
+                                _logger.LogError(prefix + "Noti Err: " + e.Message + e.StackTrace);
+                            }
+                        });
+                    }
+                    else
+                    {
+                        response = await _workItemAppService.ApplyStatusAsync(id, "in_progress", request, currentUserId, cancellationToken);
+                        ThreadPool.QueueUserWorkItem(async _ =>
                         {
-                            _logger.LogError(prefix + "Noti Err: " + e.Message + e.StackTrace);
-                        }
-                    });
-                }
-                var completionResponse = await CompleteWorkflowStep(currentStepId.Value, request.Note, Guid.Parse(currentUserHeader.FirstOrDefault()));
-                var stepCompletionStatus = completionResponse.StatusCode.ToString();
-                var stepCompletionError = completionResponse.ErrorMessage;
-                StepCompletionResponse stepCompletionResponse = null;
-                if (completionResponse.IsSuccessful)
-                {
-                    stepCompletionResponse = completionResponse.Data;
-                }
-                _logger.LogInformation(prefix + "stepId=" + currentStepId);
-                _logger.LogInformation(prefix + "nextTransitionStepId=" + nextStepId);
+                            try
+                            {
+                                var notiInput = new WorkItemActionToOutbox()
+                                {
+                                    note = request.Note,
+                                    old_status = response.OldStatus,
+                                    new_status = response.NewStatus,
+                                    id = id
+                                };
+                                var r = await SendNotification(notiInput);
 
-                if (response != null)
-                {
-                    response.StepCompletionStatus = stepCompletionStatus;
-                    response.StepCompletionResponse = stepCompletionResponse;
-                    response.StepCompletionError = stepCompletionError;
+                            }
+                            catch (Exception e)
+                            {
+                                _logger.LogError(prefix + "Noti Err: " + e.Message + e.StackTrace);
+                            }
+                        });
+                    }
+                    var completionResponse = await CompleteWorkflowStep(currentStepId.Value, request.Note, Guid.Parse(currentUserHeader.FirstOrDefault()));
+                    var stepCompletionStatus = completionResponse.StatusCode.ToString();
+                    var stepCompletionError = completionResponse.ErrorMessage;
+                    StepCompletionResponse stepCompletionResponse = null;
+                    if (completionResponse.IsSuccessful)
+                    {
+                        stepCompletionResponse = completionResponse.Data;
+                    }
+                    _logger.LogInformation(prefix + "stepId=" + currentStepId);
+                    _logger.LogInformation(prefix + "nextTransitionStepId=" + nextStepId);
+
+                    if (response != null)
+                    {
+                        response.StepCompletionStatus = stepCompletionStatus;
+                        response.StepCompletionResponse = stepCompletionResponse;
+                        response.StepCompletionError = stepCompletionError;
+                    }
+                    _logger.LogInformation(prefix + "final response=" + JsonConvert.SerializeObject(response));
                 }
-                _logger.LogInformation(prefix + "final response=" + JsonConvert.SerializeObject(response));
             }
-            
-            return Ok(response);
+            else
+            {
+                _logger.LogError(prefix + "Different Step, set step status ");
+                await _workItemAppService.SetStepStatusAsync(request.WorkflowInstanceStepId.Value, "done", cancellationToken);
+            }
+
+                return Ok(response);
         }
         catch (WorkItemNotFoundException ex)
         {
