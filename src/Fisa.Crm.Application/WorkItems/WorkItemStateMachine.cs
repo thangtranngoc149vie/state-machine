@@ -1,5 +1,6 @@
-using System.Data;
 using Dapper;
+using System;
+using System.Data;
 
 namespace Fisa.Crm.Application.WorkItems;
 
@@ -11,7 +12,18 @@ public sealed class WorkItemStateMachine : IWorkItemStateMachine
     {
         _clock = clock;
     }
-
+    public async Task<Guid> GetStepAsync(Guid workItemId, IDbConnection connection)
+    {
+        var sql = @"
+SELECT
+                        wi.current_step_id
+                    FROM public.workflow_instances AS wi
+                    WHERE wi.work_item_id = @WorkItemId
+                    ORDER BY wi.started_at DESC
+                    LIMIT 1";
+        var result = await connection.QuerySingleOrDefaultAsync<Guid>(sql, new { WorkItemId = workItemId });
+        return result;
+    }
     public async Task<WorkItemStateChangeResult> ApplyActionAsync(
         Guid workItemId,
         WorkItemAction action,
@@ -97,6 +109,91 @@ public sealed class WorkItemStateMachine : IWorkItemStateMachine
             WorkItemId = workItemId,
             OldStatus = oldStatus,
             NewStatus = newStatus,
+            StatusChanged = true,
+            ShouldNotifyWorkflow = WorkItemStateMachineRules.ShouldNotifyWorkflow(action),
+            ShouldPublishEvent = true
+        };
+    }
+
+    public async Task<Guid?> GetNextTransitionStepAsync(Guid workItemId, IDbConnection connection)
+    {
+        var sql = @"
+                    SELECT tr.id
+FROM   public.workflow_transitions tr 
+WHERE  tr.workflow_template_id = 
+(select workflow_template_id from work_items where id = @WorkItemId)
+AND  tr.from_step_template_id = (
+select step_template_id from workflow_instance_steps where id = 
+(select current_step_id from workflow_instances where id =
+(select workflow_instance_id from work_items where id = @WorkItemId)
+)
+)
+  AND  COALESCE(tr.is_deleted, false) = false 
+ORDER BY COALESCE(tr.order_index, 0)";
+        var result = await connection.QueryFirstOrDefaultAsync<Guid?>(sql, new { WorkItemId = workItemId });
+        return result;
+    }
+
+    public async Task<WorkItemStateChangeResult> ApplyStatusAsync(Guid workItemId, string status, WorkItemAction action, WorkItemActionContext context, IDbConnection connection, IDbTransaction transaction)
+    {
+        var workItem = await connection.QuerySingleOrDefaultAsync<WorkItemRecord>(
+            "SELECT id, status, assignee_id AS AssigneeId, workflow_instance_id AS WorkflowInstanceId, workflow_template_id AS WorkflowTemplateId, workflow_template_code AS WorkflowTemplateCode, applied_binding_id AS AppliedBindingId, closed_at AS ClosedAt FROM public.work_items WHERE id = @id FOR UPDATE",
+            new { id = workItemId },
+            transaction);
+
+        if (workItem is null)
+        {
+            throw new WorkItemNotFoundException(workItemId);
+        }
+
+        var oldStatus = workItem.Status ?? WorkItemStatuses.Draft;
+
+        var now = _clock.UtcNow;
+        var assigneeId = context.NewAssigneeId ?? workItem.AssigneeId;
+        var closedAt = WorkItemStateMachineRules.ShouldSetClosedAt(status)
+            ? workItem.ClosedAt ?? now
+            : null as DateTimeOffset?;
+
+        await connection.ExecuteAsync(
+            @"UPDATE public.work_items
+              SET status = @status,
+                  updated_at = @now,
+                  updated_by = @userId,
+                  assignee_id = @assigneeId,
+                  closed_at = @closedAt
+              WHERE id = @id",
+            new
+            {
+                id = workItemId,
+                status,
+                now,
+                userId = context.CurrentUserId,
+                assigneeId,
+                closedAt
+            },
+            transaction);
+
+        await connection.ExecuteAsync(
+            @"INSERT INTO public.work_item_state_history (
+                    id, work_item_id, from_status, to_status, by_user, note, created_at)
+              VALUES (
+                    uuid_generate_v4(), @workItemId, @fromStatus, @toStatus, @userId, @note, @now)",
+            new
+            {
+                workItemId,
+                fromStatus = oldStatus,
+                toStatus = status,
+                userId = context.CurrentUserId,
+                note = context.Note,
+                now
+            },
+            transaction);
+
+        return new WorkItemStateChangeResult
+        {
+            WorkItemId = workItemId,
+            OldStatus = oldStatus,
+            NewStatus = status,
             StatusChanged = true,
             ShouldNotifyWorkflow = WorkItemStateMachineRules.ShouldNotifyWorkflow(action),
             ShouldPublishEvent = true

@@ -10,6 +10,15 @@ public interface IWorkItemStateMachine
         WorkItemActionContext context,
         IDbConnection connection,
         IDbTransaction transaction);
+    Task<WorkItemStateChangeResult> ApplyStatusAsync(
+        Guid workItemId,
+        string status,
+        WorkItemAction action,
+        WorkItemActionContext context,
+        IDbConnection connection,
+        IDbTransaction transaction);
+    Task<Guid> GetStepAsync(Guid workItemId, IDbConnection connection);
+    Task<Guid?> GetNextTransitionStepAsync(Guid workItemId, IDbConnection connection);
 }
 
 public sealed class WorkItemActionContext

@@ -1,5 +1,7 @@
 using Fisa.Crm.Application.Database;
 using Fisa.Crm.Application.WorkItems;
+using Serilog;
+using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,7 +13,10 @@ if (string.IsNullOrWhiteSpace(connectionString))
 {
     throw new InvalidOperationException("Missing PostgreSQL connection string. Set FISA_CRM_DB_CONNECTION_STRING or the Postgres connection string in appsettings.");
 }
-
+builder.Host.UseSerilog((ctx, lc) => lc
+                            .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+                            .WriteTo.File("logs/log.txt", rollingInterval: RollingInterval.Day)
+                            .WriteTo.Console());
 builder.Services.AddSingleton<IDbConnectionFactory>(_ => new NpgsqlConnectionFactory(connectionString));
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<IWorkflowRuntimeClient, NoopWorkflowRuntimeClient>();
