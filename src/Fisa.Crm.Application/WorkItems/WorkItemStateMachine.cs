@@ -27,7 +27,7 @@ SELECT
     public async Task<int> SetStepStatusAsync(Guid workflowInstanceStepId, string status, IDbConnection connection)
     {
         var sql = @"
-UPDATE public.workflow_instance_steps set status = @Status, updated_at = now()
+UPDATE public.workflow_instance_steps set status = @Status::wf_step_status, updated_at = now()
 where id = @WorkflowInstanceStepId";
         var result = await connection.ExecuteAsync(sql, new { WorkflowInstanceStepId = workflowInstanceStepId, Status = status });
         return result;
