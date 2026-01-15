@@ -32,6 +32,15 @@ where id = @WorkflowInstanceStepId";
         var result = await connection.ExecuteAsync(sql, new { WorkflowInstanceStepId = workflowInstanceStepId, Status = status });
         return result;
     }
+    public async Task<string> GetWorkflowTemplateCodeOfWorkItem(Guid id, IDbConnection connection)
+    {
+        var sql = @"select code from workflow_templates where id = (
+select workflow_template_id  from work_items where id = @Id
+)
+";
+        var result = await connection.QuerySingleOrDefaultAsync<string>(sql, new { Id = id });
+        return result;
+    }
     public async Task<WorkItemStateChangeResult> ApplyActionAsync(
         Guid workItemId,
         WorkItemAction action,

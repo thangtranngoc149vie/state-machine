@@ -53,18 +53,22 @@ public sealed class WorkItemAppService : IWorkItemAppService
         Guid currentUserId,
         CancellationToken cancellationToken)
     {
+        await using var connection = (System.Data.Common.DbConnection)_connectionFactory.Create();
+        await connection.OpenAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(request.Action))
         {
             throw new InvalidActionException("Action is required");
         }
+        var templateCode = await _stateMachine.GetWorkflowTemplateCodeOfWorkItem(workItemId, connection);
+        if ( (!Enum.TryParse<WorkItemAction>(request.Action, ignoreCase: true, out var parsedAction) || !UiActions.Contains(parsedAction)) &&
+            (!((templateCode== "WF_WAREHOUSE_ISSUE" || templateCode== "WF_WAREHOUSE_MR_V1") && request.Action== "Reject"))
+            )
 
-        if (!Enum.TryParse<WorkItemAction>(request.Action, ignoreCase: true, out var parsedAction) || !UiActions.Contains(parsedAction))
         {
             throw new InvalidActionException($"Action {request.Action} is not allowed via API");
         }
 
-        await using var connection = (System.Data.Common.DbConnection)_connectionFactory.Create();
-        await connection.OpenAsync(cancellationToken);
+        
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         var result = await _stateMachine.ApplyActionAsync(
@@ -176,6 +180,7 @@ public sealed class WorkItemActionRequest
     public string? Note { get; init; }
     public Guid? NewAssigneeId { get; init; }
     public Guid? WorkflowInstanceStepId { get; init; }
+    public Guid? WorkflowTransitionId { get; init; }
     public string? Source { get; init; }
     public string? Status { get; set; }
 }

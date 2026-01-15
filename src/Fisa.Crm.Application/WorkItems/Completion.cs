@@ -14,6 +14,7 @@ namespace Fisa.Crm.Application.WorkItems
         public bool Force { get; set; }
 
         public JsonDocument? ProcessFormData { get; set; }
+        public Guid? WorkflowTransitionId { get; set; }
     }
     public class StepCompletionResponse
     {

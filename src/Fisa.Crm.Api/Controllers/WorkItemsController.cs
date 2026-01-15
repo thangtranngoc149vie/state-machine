@@ -117,7 +117,7 @@ public sealed class WorkItemsController : ControllerBase
                             }
                         });
                     }
-                    var completionResponse = await CompleteWorkflowStep(currentStepId.Value, request.Note, Guid.Parse(currentUserHeader.FirstOrDefault()));
+                    var completionResponse = await CompleteWorkflowStep(currentStepId.Value, request.Note, Guid.Parse(currentUserHeader.FirstOrDefault()), request.WorkflowTransitionId);
                     var stepCompletionStatus = completionResponse.StatusCode.ToString();
                     var stepCompletionError = completionResponse.ErrorMessage;
                     StepCompletionResponse stepCompletionResponse = null;
@@ -141,9 +141,28 @@ public sealed class WorkItemsController : ControllerBase
             {
                 _logger.LogError(prefix + "Different Step, set step status ");
                 await _workItemAppService.SetStepStatusAsync(request.WorkflowInstanceStepId.Value, "done", cancellationToken);
+                response = await _workItemAppService.ApplyActionAsync(id, request, currentUserId, cancellationToken);
+                ThreadPool.QueueUserWorkItem(async _ =>
+                {
+                    try
+                    {
+                        var notiInput = new WorkItemActionToOutbox()
+                        {
+                            note = request.Note,
+                            old_status = response.OldStatus,
+                            new_status = response.NewStatus,
+                            id = id
+                        };
+                        var r = await SendNotification(notiInput);
+                    }
+                    catch (Exception e)
+                    {
+                        _logger.LogError(prefix + "Noti Err: " + e.Message + e.StackTrace);
+                    }
+                });
             }
 
-                return Ok(response);
+            return Ok(response);
         }
         catch (WorkItemNotFoundException ex)
         {
@@ -191,7 +210,7 @@ public sealed class WorkItemsController : ControllerBase
         return response;
     }
 
-    private async Task<RestResponse<StepCompletionResponse>> CompleteWorkflowStep(Guid stepId, string note, Guid userId)
+    private async Task<RestResponse<StepCompletionResponse>> CompleteWorkflowStep(Guid stepId, string note, Guid userId, Guid? transitionId)
     {
         // 1. Create the client
         var client = new RestClient(_configuration.GetValue<string>("CompletionDomain"));
@@ -208,7 +227,8 @@ public sealed class WorkItemsController : ControllerBase
         {
             Note = note,
             Force = false,
-            ProcessFormData = null
+            ProcessFormData = null,
+            WorkflowTransitionId = transitionId
         };
 
         // 5. Add the class instance as the JSON body
