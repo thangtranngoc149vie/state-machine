@@ -48,7 +48,7 @@ public sealed class WorkItemsController : ControllerBase
                 _logger.LogInformation(prefix + " with current step ");
                 if (
                     (request.Action.ToLower() != "resolve" && request.Action.ToLower() != "close")
-                    && !(request.Action.ToLower() == "reject" && (workflowTemplateCode== "WF_WAREHOUSE_ISSUE" || workflowTemplateCode != "WF_WAREHOUSE_MR_V1"))
+                    && !(request.Action.ToLower() == "reject" && (workflowTemplateCode== "WF_WAREHOUSE_ISSUE" || workflowTemplateCode == "WF_WAREHOUSE_MR_V1"))
                     )
                 {
                     _logger.LogInformation(prefix + "not resolve, not close");
