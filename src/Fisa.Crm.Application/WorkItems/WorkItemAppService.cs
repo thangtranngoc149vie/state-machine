@@ -1,8 +1,10 @@
 ﻿using Fisa.Crm.Application.Database;
 using Microsoft.Extensions.Configuration;
 using RestSharp;
+using System.Data;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading;
 
 namespace Fisa.Crm.Application.WorkItems;
 
@@ -13,6 +15,7 @@ public interface IWorkItemAppService
     Task<Guid?> GetNextTransitionStepAsync(Guid workItemId, CancellationToken cancellationToken);
     Task<Guid?> GetStepAsync(Guid workItemId, CancellationToken cancellationToken);
     Task<int?> SetStepStatusAsync(Guid workflowInstanceStepId, string status, CancellationToken cancellationToken);
+    Task<string> GetWorkflowTemplateCodeOfWorkItem(Guid id, CancellationToken cancellationToken);
 }
 
 public sealed class WorkItemAppService : IWorkItemAppService
@@ -164,6 +167,13 @@ public sealed class WorkItemAppService : IWorkItemAppService
         await using var connection = (System.Data.Common.DbConnection)_connectionFactory.Create();
         await connection.OpenAsync(cancellationToken);
         return await _stateMachine.GetStepAsync(workItemId, connection);
+    }
+
+    public async Task<string> GetWorkflowTemplateCodeOfWorkItem(Guid id, CancellationToken cancellationToken)
+    {
+        await using var connection = (System.Data.Common.DbConnection)_connectionFactory.Create();
+        await connection.OpenAsync(cancellationToken);
+        return await _stateMachine.GetWorkflowTemplateCodeOfWorkItem(id, connection);
     }
 
     public async Task<int?> SetStepStatusAsync(Guid workflowInstanceStepId, string status, CancellationToken cancellationToken)

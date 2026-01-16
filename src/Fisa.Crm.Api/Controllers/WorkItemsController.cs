@@ -41,10 +41,15 @@ public sealed class WorkItemsController : ControllerBase
         {
             WorkItemActionResponse response = null;
             var currentStepId = await _workItemAppService.GetStepAsync(id, cancellationToken);
+
+            var workflowTemplateCode = await _workItemAppService.GetWorkflowTemplateCodeOfWorkItem(id, cancellationToken);
             if (request.WorkflowInstanceStepId == null || request.WorkflowInstanceStepId == currentStepId)
             {
                 _logger.LogInformation(prefix + " with current step ");
-                if (request.Action.ToLower() != "resolve" && request.Action.ToLower() != "close")
+                if (
+                    (request.Action.ToLower() != "resolve" && request.Action.ToLower() != "close")
+                    && !(request.Action.ToLower() == "reject" && (workflowTemplateCode== "WF_WAREHOUSE_ISSUE" || workflowTemplateCode != "WF_WAREHOUSE_MR_V1"))
+                    )
                 {
                     _logger.LogInformation(prefix + "not resolve, not close");
                     response = await _workItemAppService.ApplyActionAsync(id, request, currentUserId, cancellationToken);
