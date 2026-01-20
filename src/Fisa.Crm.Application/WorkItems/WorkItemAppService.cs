@@ -16,6 +16,7 @@ public interface IWorkItemAppService
     Task<Guid?> GetStepAsync(Guid workItemId, CancellationToken cancellationToken);
     Task<int?> SetStepStatusAsync(Guid workflowInstanceStepId, string status, CancellationToken cancellationToken);
     Task<string> GetWorkflowTemplateCodeOfWorkItem(Guid id, CancellationToken cancellationToken);
+    Task<Guid> GetWarehouseIdOfWorkItem(Guid id, CancellationToken cancellationToken);
 }
 
 public sealed class WorkItemAppService : IWorkItemAppService
@@ -169,6 +170,13 @@ public sealed class WorkItemAppService : IWorkItemAppService
         return await _stateMachine.GetStepAsync(workItemId, connection);
     }
 
+    public async Task<Guid> GetWarehouseIdOfWorkItem(Guid id, CancellationToken cancellationToken)
+    {
+        await using var connection = (System.Data.Common.DbConnection)_connectionFactory.Create();
+        await connection.OpenAsync(cancellationToken);
+        return await _stateMachine.GetWarehouseIdOfWorkItem(id, connection);
+    }
+
     public async Task<string> GetWorkflowTemplateCodeOfWorkItem(Guid id, CancellationToken cancellationToken)
     {
         await using var connection = (System.Data.Common.DbConnection)_connectionFactory.Create();
@@ -222,6 +230,16 @@ public class WorkItemActionToOutbox
     public string old_status { get; set; }
     public string new_status { get; set; }
     public string note { get; set; }
+}
+
+public class OutboxWarehouseWiDto
+{
+    public Guid warehouse_id { get; set; }
+    public Guid work_item_id { get; set; }
+    public Guid? transition_id { get; set; }
+    public string? action { get; set; }
+    public string? note { get; set; }
+    public Guid user_id { get; set; }
 }
 
 

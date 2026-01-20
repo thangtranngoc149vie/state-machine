@@ -45,6 +45,7 @@ public sealed class WorkItemsController : ControllerBase
         try
         {
             WorkItemActionResponse response = null;
+            Guid? nextStepId = null;
             var currentStepId = await _workItemAppService.GetStepAsync(id, cancellationToken);
 
             var workflowTemplateCode = await _workItemAppService.GetWorkflowTemplateCodeOfWorkItem(id, cancellationToken);
@@ -53,7 +54,7 @@ public sealed class WorkItemsController : ControllerBase
                 _logger.LogInformation(prefix + " with current step ");
                 if (
                     (request.Action.ToLower() != "resolve" && request.Action.ToLower() != "close")
-                    && !(request.Action.ToLower() == "reject" && (workflowTemplateCode== "WF_WAREHOUSE_ISSUE" || workflowTemplateCode == "WF_WAREHOUSE_MR_V1"))
+                    && !(request.Action.ToLower() == "reject" && WarehouseWorkflowTemplateCodes.Contains(workflowTemplateCode))
                     )
                 {
                     _logger.LogInformation(prefix + "not resolve, not close");
@@ -81,10 +82,22 @@ public sealed class WorkItemsController : ControllerBase
                 else
                 {
                     _logger.LogInformation(prefix + "Call completion");
-                    var nextStepId = await _workItemAppService.GetNextTransitionStepAsync(id, cancellationToken);
+                    nextStepId = await _workItemAppService.GetNextTransitionStepAsync(id, cancellationToken);
                     if (nextStepId == null)
                     {
                         response = await _workItemAppService.ApplyActionAsync(id, request, currentUserId, cancellationToken);
+                        if (WarehouseWorkflowTemplateCodes.Contains(workflowTemplateCode))
+                        {
+                            var rqClose = new WorkItemActionRequest()
+                            {
+                                Action = "Close",
+                                Note = request.Note,
+                                Source = request.Source,
+                                Status = request.Status
+                            };
+
+                            response = await _workItemAppService.ApplyActionAsync(id, rqClose, currentUserId, cancellationToken);
+                        }
                         ThreadPool.QueueUserWorkItem(async _ =>
                         {
                             try
@@ -178,6 +191,11 @@ public sealed class WorkItemsController : ControllerBase
                 {
                     try
                     {
+                        string notiAction = request.Action;
+                        if ((request.Action.ToLower() == "resolve" || request.Action.ToLower() == "close") && nextStepId ==null)
+                        {
+                            notiAction = "Close";
+                        }
                         var sendNotiWhWiInput = new OutboxWarehouseWiDto()
                         {
                             warehouse_id = await _workItemAppService.GetWarehouseIdOfWorkItem(id, cancellationToken),

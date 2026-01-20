@@ -21,6 +21,7 @@ public interface IWorkItemStateMachine
     Task<Guid?> GetNextTransitionStepAsync(Guid workItemId, IDbConnection connection);
     Task<int> SetStepStatusAsync(Guid workflowInstanceStepId, string status, IDbConnection connection);
     Task<string> GetWorkflowTemplateCodeOfWorkItem(Guid id, IDbConnection connection);
+    Task<Guid> GetWarehouseIdOfWorkItem(Guid id, IDbConnection connection);
 }
 
 public sealed class WorkItemActionContext
