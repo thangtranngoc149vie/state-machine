@@ -1,16 +1,19 @@
 using Dapper;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Data;
+using System.Runtime.CompilerServices;
 
 namespace Fisa.Crm.Application.WorkItems;
 
 public sealed class WorkItemStateMachine : IWorkItemStateMachine
 {
     private readonly IClock _clock;
-
-    public WorkItemStateMachine(IClock clock)
+    private ILogger<WorkItemStateMachine> _logger;
+    public WorkItemStateMachine(IClock clock, ILogger<WorkItemStateMachine> logger)
     {
         _clock = clock;
+        _logger = logger;
     }
     public async Task<Guid> GetStepAsync(Guid workItemId, IDbConnection connection)
     {
@@ -85,7 +88,7 @@ select workflow_template_id  from work_items where id = @Id
         var closedAt = WorkItemStateMachineRules.ShouldSetClosedAt(newStatus)
             ? workItem.ClosedAt ?? now
             : null as DateTimeOffset?;
-
+        _logger.LogInformation("newStataus=" + newStatus);
         await connection.ExecuteAsync(
             @"UPDATE public.work_items
               SET status = @newStatus,
@@ -215,5 +218,24 @@ ORDER BY COALESCE(tr.order_index, 0)";
             ShouldNotifyWorkflow = WorkItemStateMachineRules.ShouldNotifyWorkflow(action),
             ShouldPublishEvent = true
         };
+    }
+
+    public async Task<Guid> GetWarehouseIdOfWorkItem(Guid id, IDbConnection connection)
+    {
+        Guid? result = Guid.Empty;
+        var sqlMr = @"select warehouse_id from warehouse.mr_headers mh where work_item_id=@id";
+        var sqlReceipt = @"select warehouse_id from warehouse.receipt_headers where work_item_id=@id";
+        var sqlIssue = @"select warehouse_id from warehouse.issue_headers where work_item_id=@id";
+        result = await connection.QueryFirstOrDefaultAsync<Guid>(sqlMr, new {id=id});
+        if (result == null)
+        {
+            result = await connection.QueryFirstOrDefaultAsync<Guid>(sqlReceipt, new { id = id });
+        }
+        if (result == null)
+        {
+            result = await connection.QueryFirstOrDefaultAsync<Guid>(sqlIssue, new { id = id });
+        }
+        return result??Guid.Empty;
+        
     }
 }

@@ -49,6 +49,7 @@ public sealed class WorkItemsController : ControllerBase
             var currentStepId = await _workItemAppService.GetStepAsync(id, cancellationToken);
 
             var workflowTemplateCode = await _workItemAppService.GetWorkflowTemplateCodeOfWorkItem(id, cancellationToken);
+            _logger.LogInformation(prefix + "workflowTemplateCode=" + workflowTemplateCode);
             if (request.WorkflowInstanceStepId == null || request.WorkflowInstanceStepId == currentStepId)
             {
                 _logger.LogInformation(prefix + " with current step ");
@@ -83,10 +84,11 @@ public sealed class WorkItemsController : ControllerBase
                 {
                     _logger.LogInformation(prefix + "Call completion");
                     nextStepId = await _workItemAppService.GetNextTransitionStepAsync(id, cancellationToken);
+                    _logger.LogInformation(prefix + "nextStepId="+nextStepId);
                     if (nextStepId == null)
                     {
                         response = await _workItemAppService.ApplyActionAsync(id, request, currentUserId, cancellationToken);
-                        if (WarehouseWorkflowTemplateCodes.Contains(workflowTemplateCode))
+                        if (WarehouseWorkflowTemplateCodes.Contains(workflowTemplateCode) && request.Action.ToLower() == "resolve")
                         {
                             var rqClose = new WorkItemActionRequest()
                             {
@@ -95,7 +97,7 @@ public sealed class WorkItemsController : ControllerBase
                                 Source = request.Source,
                                 Status = request.Status
                             };
-
+                            _logger.LogInformation(prefix + "to be close");
                             response = await _workItemAppService.ApplyActionAsync(id, rqClose, currentUserId, cancellationToken);
                         }
                         ThreadPool.QueueUserWorkItem(async _ =>
@@ -140,23 +142,26 @@ public sealed class WorkItemsController : ControllerBase
                             }
                         });
                     }
-                    var completionResponse = await CompleteWorkflowStep(currentStepId.Value, request.Note, Guid.Parse(currentUserHeader.FirstOrDefault()), request.WorkflowTransitionId);
-                    var stepCompletionStatus = completionResponse.StatusCode.ToString();
-                    var stepCompletionError = completionResponse.ErrorMessage;
-                    StepCompletionResponse stepCompletionResponse = null;
-                    if (completionResponse.IsSuccessful)
+                    if (request.Action.ToLower() == "resolve")
                     {
-                        stepCompletionResponse = completionResponse.Data;
+                        var completionResponse = await CompleteWorkflowStep(currentStepId.Value, request.Note, Guid.Parse(currentUserHeader.FirstOrDefault()), request.WorkflowTransitionId);
+                        var stepCompletionStatus = completionResponse.StatusCode.ToString();
+                        var stepCompletionError = completionResponse.ErrorMessage;
+                        StepCompletionResponse stepCompletionResponse = null;
+                        if (completionResponse.IsSuccessful)
+                        {
+                            stepCompletionResponse = completionResponse.Data;
+                        }
+                        _logger.LogInformation(prefix + "stepId=" + currentStepId);
+                        _logger.LogInformation(prefix + "nextTransitionStepId=" + nextStepId);
+                        if (response != null)
+                        {
+                            response.StepCompletionStatus = stepCompletionStatus;
+                            response.StepCompletionResponse = stepCompletionResponse;
+                            response.StepCompletionError = stepCompletionError;
+                        }
                     }
-                    _logger.LogInformation(prefix + "stepId=" + currentStepId);
-                    _logger.LogInformation(prefix + "nextTransitionStepId=" + nextStepId);
-
-                    if (response != null)
-                    {
-                        response.StepCompletionStatus = stepCompletionStatus;
-                        response.StepCompletionResponse = stepCompletionResponse;
-                        response.StepCompletionError = stepCompletionError;
-                    }
+                    
                     _logger.LogInformation(prefix + "final response=" + JsonConvert.SerializeObject(response));
                 }
             }
