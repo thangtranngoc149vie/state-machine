@@ -206,7 +206,7 @@ public sealed class WorkItemsController : ControllerBase
                             warehouse_id = await _workItemAppService.GetWarehouseIdOfWorkItem(id, cancellationToken),
                             work_item_id = id,
                             transition_id = request.WorkflowTransitionId,
-                            action = request.Action,
+                            action = notiAction,
                             note = request.Note,
                             user_id = currentUserId
                         };
