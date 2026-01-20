@@ -14,12 +14,17 @@ public sealed class WorkItemsController : ControllerBase
     private readonly IWorkItemAppService _workItemAppService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<WorkItemsController> _logger;
+    private readonly List<string> WarehouseWorkflowTemplateCodes;
 
     public WorkItemsController(IWorkItemAppService workItemAppService, IConfiguration configuration, ILogger<WorkItemsController> logger)
     {
         _workItemAppService = workItemAppService;
         _configuration = configuration;
         _logger = logger;
+        WarehouseWorkflowTemplateCodes = new List<string>()
+            {
+                "WF_WAREHOUSE_MR_V1", "WF_WAREHOUSE_ISSUE"
+            };
     }
 
     [HttpPost("{id:guid}/actions")]
@@ -167,6 +172,30 @@ public sealed class WorkItemsController : ControllerBase
                 });
             }
 
+            if (WarehouseWorkflowTemplateCodes.Contains(workflowTemplateCode))
+            {
+                ThreadPool.QueueUserWorkItem(async _ =>
+                {
+                    try
+                    {
+                        var sendNotiWhWiInput = new OutboxWarehouseWiDto()
+                        {
+                            warehouse_id = await _workItemAppService.GetWarehouseIdOfWorkItem(id, cancellationToken),
+                            work_item_id = id,
+                            transition_id = request.WorkflowTransitionId,
+                            action = request.Action,
+                            note = request.Note,
+                            user_id = currentUserId
+                        };
+                        var r = await SendNotificationWarehouserWorkItem(sendNotiWhWiInput);
+                    }
+                    catch (Exception e)
+                    {
+                        _logger.LogError(prefix + "Noti Ob Err: " + e.Message + e.StackTrace);
+                    }
+                });
+            }
+
             return Ok(response);
         }
         catch (WorkItemNotFoundException ex)
@@ -193,7 +222,7 @@ public sealed class WorkItemsController : ControllerBase
 
     private async Task<RestResponse> SendNotification(WorkItemActionToOutbox input)
     {
-        var options = new RestClientOptions("http://localhost:5000");
+        var options = new RestClientOptions(_configuration.GetValue<string>("NotiDomain"));
         var client = new RestClient(options);
 
         // 2. Create the input data
@@ -214,7 +243,19 @@ public sealed class WorkItemsController : ControllerBase
         _logger.LogInformation("noti" + response.Content);
         return response;
     }
-
+    private async Task<RestResponse> SendNotificationWarehouserWorkItem(OutboxWarehouseWiDto input)
+    {
+        var client = new RestClient(_configuration.GetValue<string>("NotiDomain"));
+        var request = new RestRequest($"/api/outboxevents/warehouse_wi", Method.Post);
+        request.AddBody(input);
+        RestResponse response = null;
+        response = await client.ExecuteAsync(request);
+        _logger.LogInformation("noti wh " + response.IsSuccessful);
+        _logger.LogInformation("noti wh " + response.StatusCode);
+        _logger.LogInformation("noti wh " + response.StatusDescription);
+        _logger.LogInformation("noti wh " + response.Content);
+        return response;
+    }
     private async Task<RestResponse<StepCompletionResponse>> CompleteWorkflowStep(Guid stepId, string note, Guid userId, Guid? transitionId)
     {
         // 1. Create the client
@@ -245,6 +286,7 @@ public sealed class WorkItemsController : ControllerBase
         // 6. Execute the request
         RestResponse<StepCompletionResponse> response = null;
         response = await client.ExecuteAsync<StepCompletionResponse>(request);
+
         return response;
     }
 }
