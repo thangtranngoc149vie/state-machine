@@ -47,7 +47,7 @@ public sealed class WorkItemsController : ControllerBase
             WorkItemActionResponse response = null;
             Guid? nextStepId = null;
             var currentStepId = await _workItemAppService.GetStepAsync(id, cancellationToken);
-
+            var finalAction = request.Action;
             var workflowTemplateCode = await _workItemAppService.GetWorkflowTemplateCodeOfWorkItem(id, cancellationToken);
             _logger.LogInformation(prefix + "workflowTemplateCode=" + workflowTemplateCode);
             if (request.WorkflowInstanceStepId == null || request.WorkflowInstanceStepId == currentStepId)
@@ -97,6 +97,7 @@ public sealed class WorkItemsController : ControllerBase
                                 Source = request.Source,
                                 Status = request.Status
                             };
+                            finalAction = rqClose.Action;
                             _logger.LogInformation(prefix + "to be close");
                             response = await _workItemAppService.ApplyActionAsync(id, rqClose, currentUserId, cancellationToken);
                         }
@@ -142,25 +143,23 @@ public sealed class WorkItemsController : ControllerBase
                             }
                         });
                     }
-                    if (request.Action.ToLower() == "resolve")
+                    var completionResponse = await CompleteWorkflowStep(currentStepId.Value, request.Note, Guid.Parse(currentUserHeader.FirstOrDefault()), request.WorkflowTransitionId);
+                    var stepCompletionStatus = completionResponse.StatusCode.ToString();
+                    var stepCompletionError = completionResponse.ErrorMessage;
+                    StepCompletionResponse stepCompletionResponse = null;
+                    if (completionResponse.IsSuccessful)
                     {
-                        var completionResponse = await CompleteWorkflowStep(currentStepId.Value, request.Note, Guid.Parse(currentUserHeader.FirstOrDefault()), request.WorkflowTransitionId);
-                        var stepCompletionStatus = completionResponse.StatusCode.ToString();
-                        var stepCompletionError = completionResponse.ErrorMessage;
-                        StepCompletionResponse stepCompletionResponse = null;
-                        if (completionResponse.IsSuccessful)
-                        {
-                            stepCompletionResponse = completionResponse.Data;
-                        }
-                        _logger.LogInformation(prefix + "stepId=" + currentStepId);
-                        _logger.LogInformation(prefix + "nextTransitionStepId=" + nextStepId);
-                        if (response != null)
-                        {
-                            response.StepCompletionStatus = stepCompletionStatus;
-                            response.StepCompletionResponse = stepCompletionResponse;
-                            response.StepCompletionError = stepCompletionError;
-                        }
+                        stepCompletionResponse = completionResponse.Data;
                     }
+                    _logger.LogInformation(prefix + "stepId=" + currentStepId);
+                    _logger.LogInformation(prefix + "nextTransitionStepId=" + nextStepId);
+                    if (response != null)
+                    {
+                        response.StepCompletionStatus = stepCompletionStatus;
+                        response.StepCompletionResponse = stepCompletionResponse;
+                        response.StepCompletionError = stepCompletionError;
+                    }
+                    
                     
                     _logger.LogInformation(prefix + "final response=" + JsonConvert.SerializeObject(response));
                 }
@@ -196,17 +195,12 @@ public sealed class WorkItemsController : ControllerBase
                 {
                     try
                     {
-                        string notiAction = request.Action;
-                        if ((request.Action.ToLower() == "resolve" || request.Action.ToLower() == "close") && nextStepId ==null)
-                        {
-                            notiAction = "Close";
-                        }
                         var sendNotiWhWiInput = new OutboxWarehouseWiDto()
                         {
                             warehouse_id = await _workItemAppService.GetWarehouseIdOfWorkItem(id, cancellationToken),
                             work_item_id = id,
                             transition_id = request.WorkflowTransitionId,
-                            action = notiAction,
+                            action = finalAction,
                             note = request.Note,
                             user_id = currentUserId
                         };

@@ -227,15 +227,12 @@ ORDER BY COALESCE(tr.order_index, 0)";
         var sqlReceipt = @"select warehouse_id from warehouse.receipt_headers where work_item_id=@id";
         var sqlIssue = @"select warehouse_id from warehouse.issue_headers where work_item_id=@id";
         result = await connection.QueryFirstOrDefaultAsync<Guid>(sqlMr, new {id=id});
-        if (result == null)
-        {
-            result = await connection.QueryFirstOrDefaultAsync<Guid>(sqlReceipt, new { id = id });
-        }
-        if (result == null)
-        {
-            result = await connection.QueryFirstOrDefaultAsync<Guid>(sqlIssue, new { id = id });
-        }
-        return result??Guid.Empty;
-        
+        if (result != null) return result ?? Guid.Empty;
+        result = await connection.QueryFirstOrDefaultAsync<Guid>(sqlReceipt, new { id = id });
+        if (result != null) return result ?? Guid.Empty;
+        result = await connection.QueryFirstOrDefaultAsync<Guid>(sqlIssue, new { id = id });
+        if (result != null) return result ?? Guid.Empty;
+        return result ?? Guid.Empty;
+
     }
 }
