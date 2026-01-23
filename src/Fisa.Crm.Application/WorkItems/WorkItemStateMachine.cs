@@ -1,5 +1,6 @@
 using Dapper;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using System;
 using System.Data;
 using System.Runtime.CompilerServices;
@@ -219,7 +220,12 @@ ORDER BY COALESCE(tr.order_index, 0)";
             ShouldPublishEvent = true
         };
     }
+    public async Task<Guid> GetOrgIdOfWorkItem(Guid id, IDbConnection connection)
+    {
+        var sql = @"select org_id from work_items where id=@id";
+        return await connection.QueryFirstOrDefaultAsync<Guid>(sql, new { id = id });
 
+    }
     public async Task<Guid> GetWarehouseIdOfWorkItem(Guid id, IDbConnection connection)
     {
         Guid? result = Guid.Empty;
@@ -234,5 +240,57 @@ ORDER BY COALESCE(tr.order_index, 0)";
         if (result != null) return result ?? Guid.Empty;
         return result ?? Guid.Empty;
 
+    }
+
+    public async Task<WorkflowTransitionWithTemplateDto> GetNextTransitionStepDetailAsync(Guid workItemId, IDbConnection connection)
+    {
+        var sql = @"select tr.*, 
+                wt.code workflow_template_code,
+                wstf.code from_step_template_code,
+                wstf.""order"" from_step_template_order,
+                wstt.code to_step_template_code,
+                wstt.""order"" to_step_template_order
+                from workflow_transitions tr
+                left join workflow_templates wt on tr.workflow_template_id = wt.id
+                left join workflow_step_templates wstf on tr.from_step_template_id = wstf.id
+                left join workflow_step_templates wstt on tr.to_step_template_id = wstt.id 
+                WHERE  tr.workflow_template_id = 
+                (select workflow_template_id from work_items where id = @WorkItemId)
+                AND  tr.from_step_template_id = (
+                select step_template_id from workflow_instance_steps where id = 
+                (select current_step_id from workflow_instances where id =
+                (select workflow_instance_id from work_items where id = @WorkItemId)
+                )
+                )
+                  AND  COALESCE(tr.is_deleted, false) = false 
+                ORDER BY COALESCE(tr.order_index, 0)";
+        var result = await connection.QueryFirstOrDefaultAsync<WorkflowTransitionWithTemplateDto>(sql, new { WorkItemId = workItemId });
+        return result;
+    }
+
+    public async Task<string> GetConfigByOrgIdAndKey(Guid org_id, string key, IDbConnection connection)
+    {
+        var sql = @"SELECT value::text FROM configs WHERE org_id = @org_id AND key = @key";
+        var result = await connection.QueryFirstOrDefaultAsync<string>(sql, new { org_id = org_id, key = key });
+        return result;
+    }
+    public async Task<List<string>> GetRoleListOfConfigStepRolesAsync(Guid orgId, string workflowTemplateCode, string stepCode,  IDbConnection connection)
+    {
+        var result = new List<string>();
+        var cfgJson = await GetConfigByOrgIdAndKey(orgId, "assignment_policy:" + workflowTemplateCode, connection);
+        if (cfgJson != null)
+        {
+            var cfg = JsonConvert.DeserializeObject<ConfigAssignmentPolicyWorkflowRoot>
+                (cfgJson);
+            if (cfg != null && cfg.steps != null)
+            {
+                var stepCfg = cfg.steps.FirstOrDefault(x => x.stepKey.ToLower() == stepCode.ToLower());
+                if (stepCfg != null)
+                {
+                    result = stepCfg.roles;
+                }
+            }
+        }
+        return result;
     }
 }

@@ -84,7 +84,9 @@ public sealed class WorkItemsController : ControllerBase
                 {
                     _logger.LogInformation(prefix + "Call completion");
                     nextStepId = await _workItemAppService.GetNextTransitionStepAsync(id, cancellationToken);
+                    var nextTrans = await _workItemAppService.GetNextTransitionDetailAsync(id, cancellationToken);
                     _logger.LogInformation(prefix + "nextStepId="+nextStepId);
+                    _logger.LogInformation(prefix + "nextTrans="+JsonConvert.SerializeObject(nextTrans));
                     if (nextStepId == null)
                     {
                         response = await _workItemAppService.ApplyActionAsync(id, request, currentUserId, cancellationToken);
@@ -151,16 +153,50 @@ public sealed class WorkItemsController : ControllerBase
                     {
                         stepCompletionResponse = completionResponse.Data;
                     }
-                    _logger.LogInformation(prefix + "stepId=" + currentStepId);
-                    _logger.LogInformation(prefix + "nextTransitionStepId=" + nextStepId);
+                    //_logger.LogInformation(prefix + "stepId=" + currentStepId);
+                    //_logger.LogInformation(prefix + "nextTransitionStepId=" + nextStepId);
                     if (response != null)
                     {
                         response.StepCompletionStatus = stepCompletionStatus;
                         response.StepCompletionResponse = stepCompletionResponse;
                         response.StepCompletionError = stepCompletionError;
                     }
-                    
-                    
+                    nextTrans = await _workItemAppService.GetNextTransitionDetailAsync(id, cancellationToken);
+                    _logger.LogInformation(prefix + "nextTransAfterCompletion=" + JsonConvert.SerializeObject(nextTrans));
+                    //var orgId = await _workItemAppService.GetOrgIdOfWorkItem(id, cancellationToken);
+                    //var rl = await _workItemAppService.GetRoleListOfConfigStepRolesAsync(orgId, workflowTemplateCode, nextTrans.to_step_template_code, cancellationToken);
+                    //_logger.LogInformation(prefix + "roleListStep=" + JsonConvert.SerializeObject(rl));
+                    //if (rl.Contains("SYSTEM"))
+                    //{
+                    //    currentStepId = await _workItemAppService.GetStepAsync(id, cancellationToken);
+                    //    completionResponse = await CompleteWorkflowStep(currentStepId.Value, request.Note, Guid.Parse(currentUserHeader.FirstOrDefault()), request.WorkflowTransitionId);
+                    //    stepCompletionStatus = completionResponse.StatusCode.ToString();
+                    //    stepCompletionError = completionResponse.ErrorMessage;
+                    //    stepCompletionResponse = null;
+                    //    if (completionResponse.IsSuccessful)
+                    //    {
+                    //        stepCompletionResponse = completionResponse.Data;
+                    //    }
+                    //    _logger.LogInformation(prefix + "stepId=" + currentStepId);
+                    //    _logger.LogInformation(prefix + "nextTransitionStepId=" + nextStepId);
+                    //    var rqClose = new WorkItemActionRequest()
+                    //    {
+                    //        Action = "Close",
+                    //        Note = request.Note,
+                    //        Source = request.Source,
+                    //        Status = request.Status
+                    //    };
+                    //    finalAction = rqClose.Action;
+                    //    _logger.LogInformation(prefix + "to be close");
+                    //    response = await _workItemAppService.ApplyActionAsync(id, rqClose, currentUserId, cancellationToken);
+                    //    if (response != null)
+                    //    {
+                    //        response.StepCompletionStatus = stepCompletionStatus;
+                    //        response.StepCompletionResponse = stepCompletionResponse;
+                    //        response.StepCompletionError = stepCompletionError;
+                    //    }
+                    //}
+
                     _logger.LogInformation(prefix + "final response=" + JsonConvert.SerializeObject(response));
                 }
             }

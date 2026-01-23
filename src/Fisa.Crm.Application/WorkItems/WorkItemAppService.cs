@@ -13,10 +13,13 @@ public interface IWorkItemAppService
     Task<WorkItemActionResponse> ApplyActionAsync(Guid workItemId, WorkItemActionRequest request, Guid currentUserId, CancellationToken cancellationToken);
     Task<WorkItemActionResponse> ApplyStatusAsync(Guid workItemId, string status, WorkItemActionRequest request, Guid currentUserId, CancellationToken cancellationToken);
     Task<Guid?> GetNextTransitionStepAsync(Guid workItemId, CancellationToken cancellationToken);
+    Task<WorkflowTransitionWithTemplateDto?> GetNextTransitionDetailAsync(Guid workItemId, CancellationToken cancellationToken);
     Task<Guid?> GetStepAsync(Guid workItemId, CancellationToken cancellationToken);
     Task<int?> SetStepStatusAsync(Guid workflowInstanceStepId, string status, CancellationToken cancellationToken);
     Task<string> GetWorkflowTemplateCodeOfWorkItem(Guid id, CancellationToken cancellationToken);
     Task<Guid> GetWarehouseIdOfWorkItem(Guid id, CancellationToken cancellationToken);
+    Task<Guid> GetOrgIdOfWorkItem(Guid id, CancellationToken cancellationToken);
+    Task<List<string>> GetRoleListOfConfigStepRolesAsync(Guid orgId, string workflowTemplateCode, string stepCode, CancellationToken cancellationToken);
 }
 
 public sealed class WorkItemAppService : IWorkItemAppService
@@ -156,11 +159,25 @@ public sealed class WorkItemAppService : IWorkItemAppService
         };
     }
 
+    public async Task<WorkflowTransitionWithTemplateDto?> GetNextTransitionDetailAsync(Guid workItemId, CancellationToken cancellationToken)
+    {
+        await using var connection = (System.Data.Common.DbConnection)_connectionFactory.Create();
+        await connection.OpenAsync(cancellationToken);
+        return await _stateMachine.GetNextTransitionStepDetailAsync(workItemId, connection);
+    }
+
     public async Task<Guid?> GetNextTransitionStepAsync(Guid workItemId, CancellationToken cancellationToken)
     {
         await using var connection = (System.Data.Common.DbConnection)_connectionFactory.Create();
         await connection.OpenAsync(cancellationToken);
         return await _stateMachine.GetNextTransitionStepAsync(workItemId, connection);
+    }
+
+    public async Task<List<string>> GetRoleListOfConfigStepRolesAsync(Guid orgId, string workflowTemplateCode, string stepCode, CancellationToken cancellationToken)
+    {
+        await using var connection = (System.Data.Common.DbConnection)_connectionFactory.Create();
+        await connection.OpenAsync(cancellationToken);
+        return await _stateMachine.GetRoleListOfConfigStepRolesAsync(orgId, workflowTemplateCode, stepCode, connection);
     }
 
     public async Task<Guid?> GetStepAsync(Guid workItemId, CancellationToken cancellationToken)
@@ -176,7 +193,12 @@ public sealed class WorkItemAppService : IWorkItemAppService
         await connection.OpenAsync(cancellationToken);
         return await _stateMachine.GetWarehouseIdOfWorkItem(id, connection);
     }
-
+    public async Task<Guid> GetOrgIdOfWorkItem(Guid id, CancellationToken cancellationToken)
+    {
+        await using var connection = (System.Data.Common.DbConnection)_connectionFactory.Create();
+        await connection.OpenAsync(cancellationToken);
+        return await _stateMachine.GetOrgIdOfWorkItem(id, connection);
+    }
     public async Task<string> GetWorkflowTemplateCodeOfWorkItem(Guid id, CancellationToken cancellationToken)
     {
         await using var connection = (System.Data.Common.DbConnection)_connectionFactory.Create();
